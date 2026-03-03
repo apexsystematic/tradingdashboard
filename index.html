@@ -103,237 +103,114 @@
     </div>
 
     <script>
-        const STABLECOINS = ['USDT', 'USDC', 'FDUSD', 'TUSD', 'BUSD', 'DAI', 'EUR', 'TRY'];
-        const EXCLUDE_ENDS = ['UP', 'DOWN', 'BEAR', 'BULL'];
+    // --- Chart Initializations ---
+    const chartOptions = {
+        layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#6B7280' },
+        grid: { vertLines: { color: '#1F2937' }, horzLines: { color: '#1F2937' } },
+        timeScale: { borderColor: '#1F2937', timeVisible: false },
+        rightPriceScale: { borderColor: '#1F2937' },
+    };
 
-        // --- UI Setup & Charts ---
-        const chartOptions = {
-            layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#6B7280' },
-            grid: { vertLines: { color: '#1F2937' }, horzLines: { color: '#1F2937' } },
-            timeScale: { borderColor: '#1F2937', timeVisible: false },
-            rightPriceScale: { borderColor: '#1F2937' },
-        };
+    const smaChart = LightweightCharts.createChart(document.getElementById('smaChart'), chartOptions);
+    const sma10Series = smaChart.addLineSeries({ color: '#25C2A0', lineWidth: 2 });
+    const sma20Series = smaChart.addLineSeries({ color: '#3B82F6', lineWidth: 2 });
+    const sma50Series = smaChart.addLineSeries({ color: '#F59E0B', lineWidth: 2 });
+    const sma200Series = smaChart.addLineSeries({ color: '#F45B69', lineWidth: 2 });
 
-        const smaChart = LightweightCharts.createChart(document.getElementById('smaChart'), chartOptions);
-        const sma10Series = smaChart.addLineSeries({ color: '#25C2A0', lineWidth: 2 });
-        const sma20Series = smaChart.addLineSeries({ color: '#3B82F6', lineWidth: 2 });
-        const sma50Series = smaChart.addLineSeries({ color: '#F59E0B', lineWidth: 2 });
-        const sma200Series = smaChart.addLineSeries({ color: '#F45B69', lineWidth: 2 });
+    const fgChart = LightweightCharts.createChart(document.getElementById('fgChart'), chartOptions);
+    const fgSeries = fgChart.addAreaSeries({
+        topColor: 'rgba(244, 91, 105, 0.4)', bottomColor: 'rgba(244, 91, 105, 0.0)',
+        lineColor: '#F45B69', lineWidth: 2,
+    });
 
-        const fgChart = LightweightCharts.createChart(document.getElementById('fgChart'), chartOptions);
-        const fgSeries = fgChart.addAreaSeries({
-            topColor: 'rgba(244, 91, 105, 0.4)', bottomColor: 'rgba(244, 91, 105, 0.0)',
-            lineColor: '#F45B69', lineWidth: 2,
-        });
+    // --- Helper Functions ---
+    function formatVal(val, isVol = false) {
+        if (isVol) return '$' + (val / 1e6).toFixed(1) + 'M';
+        return (val > 0 ? '+' : '') + val.toFixed(2) + '%';
+    }
 
-        // Resize handlers
-        new ResizeObserver(() => {
-            smaChart.applyOptions({ width: document.getElementById('smaChart').clientWidth });
-            fgChart.applyOptions({ width: document.getElementById('fgChart').clientWidth });
-        }).observe(document.body);
+    function populateList(elementId, data, isVolume = false) {
+        document.getElementById(elementId).innerHTML = data.map(item => `
+            <li class="flex justify-between items-center py-1 border-b border-borderSubtle last:border-0">
+                <span class="text-textMain">${item.symbol.replace('USDT','')}</span>
+                <span class="${isVolume ? 'text-textMain' : (item.val > 0 ? 'text-bullish' : 'text-bearish')}">
+                    ${formatVal(item.val, isVolume)}
+                </span>
+            </li>
+        `).join('');
+    }
 
-        function log(msg) {
-            const el = document.getElementById('logs');
-            el.innerHTML = `<div>> ${msg}</div>` + el.innerHTML;
-        }
+    // --- Fetch Data from Python Backend ---
+    let globalListData = null;
 
-        // --- Helper functions ---
-        function formatVal(val, isVol = false) {
-            if (isVol) return '$' + (val / 1e6).toFixed(1) + 'M';
-            return (val > 0 ? '+' : '') + val.toFixed(2) + '%';
-        }
+    async function fetchDashboardData() {
+        try {
+            // Point this to your Python server URL
+            const response = await fetch('http://localhost:8000/api/dashboard');
+            const data = await response.json();
 
-        function populateList(elementId, data, isVolume = false) {
-            document.getElementById(elementId).innerHTML = data.map(item => `
-                <li class="flex justify-between items-center py-1 border-b border-borderSubtle last:border-0">
-                    <span class="text-textMain">${item.symbol.replace('USDT','')}</span>
-                    <span class="${isVolume ? 'text-textMain' : (item.val > 0 ? 'text-bullish' : 'text-bearish')}">
-                        ${formatVal(item.val, isVolume)}
-                    </span>
-                </li>
-            `).join('');
-        }
-
-        // Math: Calculate simple moving average
-        function calculateSMA(data, period) {
-            let sma = [];
-            for (let i = 0; i < data.length; i++) {
-                if (i < period - 1) {
-                    sma.push(null);
-                    continue;
-                }
-                let sum = 0;
-                for (let j = 0; j < period; j++) sum += data[i - j].close;
-                sma.push(sum / period);
+            if (data.status === 'initializing') {
+                document.getElementById('status').innerText = 'Backend Warming Up...';
+                setTimeout(fetchDashboardData, 5000); // Poll every 5s until ready
+                return;
             }
-            return sma;
-        }
 
-        // --- Core Execution ---
-        async function runEngine() {
-            try {
-                // 1. Fetch Fear & Greed
-                log('Fetching Alt.me Fear & Greed...');
-                const fgRes = await fetch('https://api.alternative.me/fng/?limit=60&format=json');
-                const fgData = await fgRes.json();
-                
-                const fgFormatted = fgData.data.map(d => ({
-                    time: new Date(d.timestamp * 1000).toISOString().split('T')[0],
-                    value: parseInt(d.value)
-                })).reverse();
-                
-                fgSeries.setData(fgFormatted);
-                const currentFg = fgFormatted[fgFormatted.length-1].value;
-                const fgLabel = document.getElementById('fgCurrent');
-                fgLabel.innerText = `${fgData.data[0].value_classification.toUpperCase()} (${currentFg})`;
-                fgLabel.className = `text-xs font-mono font-bold ${currentFg > 50 ? 'text-bullish' : 'text-bearish'}`;
-                document.getElementById('fgLoader').style.display = 'none';
+            // 1. Populate Charts
+            sma10Series.setData(data.breadth.b10);
+            sma20Series.setData(data.breadth.b20);
+            sma50Series.setData(data.breadth.b50);
+            sma200Series.setData(data.breadth.b200);
+            smaChart.timeScale().fitContent();
 
-                // 2. Fetch Binance 24H Tickers to get Market Overview
-                log('Fetching Binance 24H tickers...');
-                const tRes = await fetch('https://api.binance.com/api/v3/ticker/24hr');
-                const allTickers = await tRes.json();
+            fgSeries.setData(data.fear_greed);
+            fgChart.timeScale().fitContent();
+            
+            const currentFg = data.fear_greed[data.fear_greed.length - 1].value;
+            document.getElementById('fgCurrent').innerText = `INDEX: ${currentFg}`;
+            document.getElementById('fgCurrent').className = `text-xs font-mono font-bold ${currentFg > 50 ? 'text-bullish' : 'text-bearish'}`;
 
-                // Filter for purely USDT pairs, no stablecoins or leverged tokens
-                const validTickers = allTickers.filter(t => {
-                    if (!t.symbol.endsWith('USDT')) return false;
-                    const base = t.symbol.replace('USDT', '');
-                    if (STABLECOINS.includes(base)) return false;
-                    if (EXCLUDE_ENDS.some(ext => base.endsWith(ext))) return false;
-                    return true;
-                });
+            // Remove Loaders
+            document.getElementById('smaLoader').style.display = 'none';
+            document.getElementById('fgLoader').style.display = 'none';
 
-                // Sort by Volume to find Top 50 most liquid altcoins
-                validTickers.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
-                const top50 = validTickers.slice(0, 50);
-                
-                // Populate Gainers & Volume Lists
-                const gainers = [...validTickers].sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent)).slice(0, 10);
-                populateList('gainersList', gainers.map(g => ({ symbol: g.symbol, val: parseFloat(g.priceChangePercent) })));
-                
-                populateList('volumeList', top50.slice(0, 10).map(v => ({ symbol: v.symbol, val: parseFloat(v.quoteVolume) })), true);
-
-                // 3. Process Klines for Breadth and 52W Highs/Lows
-                log('Calculating Breadth & 52W data for Top 50...');
-                let breadthData = {}; // structure: { '2023-10-01': { total: 50, above10: 20, above20: ... } }
-                let newHighsCount = 0;
-                let newLowsCount = 0;
-
-                // Process in chunks to avoid overwhelming the browser network queue
-                const chunkSize = 10;
-                for (let i = 0; i < top50.length; i += chunkSize) {
-                    const chunk = top50.slice(i, i + chunkSize);
-                    
-                    await Promise.all(chunk.map(async (coin) => {
-                        try {
-                            // Fetch 200 daily klines for SMA
-                            const klineRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin.symbol}&interval=1d&limit=200`);
-                            const klines = await klineRes.json();
-                            
-                            const parsedKlines = klines.map(k => ({
-                                time: new Date(k[0]).toISOString().split('T')[0],
-                                close: parseFloat(k[4]),
-                                high: parseFloat(k[2]),
-                                low: parseFloat(k[3])
-                            }));
-
-                            const sma10 = calculateSMA(parsedKlines, 10);
-                            const sma20 = calculateSMA(parsedKlines, 20);
-                            const sma50 = calculateSMA(parsedKlines, 50);
-                            const sma200 = calculateSMA(parsedKlines, 200);
-
-                            // Aggregate Breadth for the last 30 days
-                            const lookback = 30;
-                            for (let j = parsedKlines.length - lookback; j < parsedKlines.length; j++) {
-                                if (j < 0) continue;
-                                const day = parsedKlines[j].time;
-                                const close = parsedKlines[j].close;
-                                
-                                if (!breadthData[day]) breadthData[day] = { total: 0, a10: 0, a20: 0, a50: 0, a200: 0 };
-                                
-                                breadthData[day].total++;
-                                if (sma10[j] && close > sma10[j]) breadthData[day].a10++;
-                                if (sma20[j] && close > sma20[j]) breadthData[day].a20++;
-                                if (sma50[j] && close > sma50[j]) breadthData[day].a50++;
-                                if (sma200[j] && close > sma200[j]) breadthData[day].a200++;
-                            }
-
-                            // Calculate 52-Week Highs/Lows approximation
-                            // Using the 200 daily candles (roughly 6.5 months) as a fast proxy to avoid extra API hits. 
-                            // If you need exact 365 days, change the limit above to 365.
-                            let maxHigh = 0;
-                            let minLow = Infinity;
-                            parsedKlines.forEach(k => {
-                                if (k.high > maxHigh) maxHigh = k.high;
-                                if (k.low < minLow) minLow = k.low;
-                            });
-
-                            const currentClose = parsedKlines[parsedKlines.length - 1].close;
-                            // Tolerance of 2% from the high/low to count as a "New High/Low"
-                            if (currentClose >= maxHigh * 0.98) newHighsCount++;
-                            if (currentClose <= minLow * 1.02) newLowsCount++;
-
-                        } catch (err) {
-                            console.error(`Failed to process ${coin.symbol}`, err);
-                        }
-                    }));
-                }
-
-                // 4. Plot Breadth Chart
-                const dates = Object.keys(breadthData).sort();
-                const b10 = [], b20 = [], b50 = [], b200 = [];
-                
-                dates.forEach(date => {
-                    const d = breadthData[date];
-                    b10.push({ time: date, value: (d.a10 / d.total) * 100 });
-                    b20.push({ time: date, value: (d.a20 / d.total) * 100 });
-                    b50.push({ time: date, value: (d.a50 / d.total) * 100 });
-                    b200.push({ time: date, value: (d.a200 / d.total) * 100 });
-                });
-
-                sma10Series.setData(b10);
-                sma20Series.setData(b20);
-                sma50Series.setData(b50);
-                sma200Series.setData(b200);
-                smaChart.timeScale().fitContent();
-                document.getElementById('smaLoader').style.display = 'none';
-
-                // 5. Update 52W UI
-                const totalExtremes = newHighsCount + newLowsCount;
-                let highPct = 50, lowPct = 50;
-                
-                if (totalExtremes > 0) {
-                    highPct = (newHighsCount / totalExtremes) * 100;
-                    lowPct = (newLowsCount / totalExtremes) * 100;
-                }
-                
-                // Minimum width so text is visible
-                if (highPct < 15) { highPct = 15; lowPct = 85; }
-                if (lowPct < 15) { lowPct = 15; highPct = 85; }
-
-                document.getElementById('highsBar').style.width = `${highPct}%`;
-                document.getElementById('highsBar').innerText = `HIGHS: ${newHighsCount}`;
-                document.getElementById('lowsBar').style.width = `${lowPct}%`;
-                document.getElementById('lowsBar').innerText = `LOWS: ${newLowsCount}`;
-
-                document.getElementById('status').innerText = 'Data Sync Complete';
-                log('All systems operational.');
-
-            } catch (error) {
-                log(`ERROR: ${error.message}`);
-                document.getElementById('status').innerText = 'Sync Failed. Retrying...';
-                document.getElementById('status').className = 'text-xs text-bearish mt-1';
+            // 2. Populate 52-Week Extremes
+            const total = data.extremes.highs + data.extremes.lows;
+            let hPct = 50, lPct = 50;
+            if (total > 0) {
+                hPct = (data.extremes.highs / total) * 100;
+                lPct = (data.extremes.lows / total) * 100;
             }
+            document.getElementById('highsBar').style.width = `${Math.max(15, hPct)}%`;
+            document.getElementById('highsBar').innerText = `HIGHS: ${data.extremes.highs}`;
+            document.getElementById('lowsBar').style.width = `${Math.max(15, lPct)}%`;
+            document.getElementById('lowsBar').innerText = `LOWS: ${data.extremes.lows}`;
+
+            // 3. Populate Lists
+            globalListData = data.lists;
+            populateList('gainersList', globalListData.daily_gainers);
+            populateList('volumeList', globalListData.daily_volume, true);
+
+            document.getElementById('status').innerText = 'System Live & Synced';
+            document.getElementById('status').className = 'text-xs text-bullish mt-1';
+
+        } catch (error) {
+            console.error('Error fetching data:', error);
+            document.getElementById('status').innerText = 'Backend Offline';
+            document.getElementById('status').className = 'text-xs text-bearish mt-1';
         }
+    }
 
-        // Clock 
-        setInterval(() => {
-            document.getElementById('clock').innerText = new Date().toISOString().substring(11, 19) + ' UTC';
-        }, 1000);
+    // List Toggles (Daily / Weekly)
+    document.getElementById('btnGainers1D').addEventListener('click', () => populateList('gainersList', globalListData.daily_gainers));
+    document.getElementById('btnGainers1W').addEventListener('click', () => populateList('gainersList', globalListData.weekly_gainers));
+    document.getElementById('btnVolume1D').addEventListener('click', () => populateList('volumeList', globalListData.daily_volume, true));
+    document.getElementById('btnVolume1W').addEventListener('click', () => populateList('volumeList', globalListData.weekly_volume, true));
 
-        // Start
-        runEngine();
+    // Clock and Init
+    setInterval(() => document.getElementById('clock').innerText = new Date().toISOString().substring(11, 19) + ' UTC', 1000);
+    fetchDashboardData();
 
     </script>
+    
 </body>
 </html>
