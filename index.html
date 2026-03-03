@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Systematic Trading Dashboard</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        bgApp: '#0B121C',
+                        bgCard: '#121A25',
+                        borderSubtle: '#1F2937',
+                        textMain: '#F3F4F6',
+                        textMuted: '#6B7280',
+                        bullish: '#25C2A0',
+                        bearish: '#F45B69'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+
+    <style>
+        body { background-color: #0B121C; color: #F3F4F6; }
+        /* Custom Scrollbar for a sleek look */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #0B121C; }
+        ::-webkit-scrollbar-thumb { background: #1F2937; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #6B7280; }
+        
+        .chart-container { height: 300px; width: 100%; }
+    </style>
+</head>
+<body class="font-sans antialiased p-2 md:p-4">
+
+    <header class="mb-4 flex justify-between items-end border-b border-borderSubtle pb-2">
+        <div>
+            <h1 class="text-xl font-bold tracking-wide">MARKET SCREENER</h1>
+            <p class="text-xs text-textMuted uppercase tracking-wider">Systematic Overview</p>
+        </div>
+        <div class="text-right font-mono text-sm text-textMuted">
+            <span id="clock">00:00:00 UTC</span>
+        </div>
+    </header>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 lg:col-span-2 shadow-lg">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-sm font-semibold text-textMuted uppercase">Binance SMA Breadth (%)</h2>
+                <span class="text-xs text-textMuted font-mono">10, 20, 50, 200</span>
+            </div>
+            <div id="smaChart" class="chart-container"></div>
+        </div>
+
+        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg">
+            <div class="flex justify-between items-center mb-2">
+                <h2 class="text-sm font-semibold text-textMuted uppercase">Fear & Greed Index</h2>
+                <span class="text-xs font-mono text-bearish font-bold">FEAR (34)</span>
+            </div>
+            <div id="fgChart" class="chart-container"></div>
+        </div>
+
+        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg lg:col-span-3">
+            <h2 class="text-sm font-semibold text-textMuted uppercase mb-3">New 52-Week Highs & Lows</h2>
+            <div class="flex items-center w-full bg-borderSubtle h-6 rounded-full overflow-hidden font-mono text-xs font-bold">
+                <div class="bg-bullish h-full flex items-center justify-start px-3 text-bgApp" style="width: 65%;">HIGHS: 142</div>
+                <div class="bg-bearish h-full flex items-center justify-end px-3 text-bgApp" style="width: 35%;">LOWS: 76</div>
+            </div>
+        </div>
+
+        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg lg:col-span-1 xl:col-span-1">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-sm font-semibold text-textMuted uppercase">Top Gainers</h2>
+                <div class="flex space-x-2 text-xs font-mono">
+                    <button class="text-textMain border-b border-bullish">1D</button>
+                    <button class="text-textMuted hover:text-textMain">1W</button>
+                </div>
+            </div>
+            <ul class="space-y-2 font-mono text-sm" id="gainersList">
+                </ul>
+        </div>
+
+        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg lg:col-span-1 xl:col-span-1">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-sm font-semibold text-textMuted uppercase">Volume Anomalies</h2>
+                <div class="flex space-x-2 text-xs font-mono">
+                    <button class="text-textMain border-b border-bullish">1D</button>
+                    <button class="text-textMuted hover:text-textMain">1W</button>
+                </div>
+            </div>
+            <ul class="space-y-2 font-mono text-sm" id="volumeList">
+                </ul>
+        </div>
+        
+    </div>
+
+    <script>
+        // --- Shared Chart Options ---
+        const chartOptions = {
+            layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#6B7280' },
+            grid: { vertLines: { color: '#1F2937' }, horzLines: { color: '#1F2937' } },
+            timeScale: { borderColor: '#1F2937', timeVisible: true },
+            rightPriceScale: { borderColor: '#1F2937' },
+        };
+
+        // --- 1. SMA Breadth Chart Initialization ---
+        const smaContainer = document.getElementById('smaChart');
+        const smaChart = LightweightCharts.createChart(smaContainer, chartOptions);
+        
+        // Example: 200 SMA line
+        const sma200Series = smaChart.addLineSeries({ color: '#25C2A0', lineWidth: 2 });
+        // Example data structure you will feed it
+        sma200Series.setData([
+            { time: '2026-02-25', value: 45 },
+            { time: '2026-02-26', value: 48 },
+            { time: '2026-02-27', value: 52 },
+            { time: '2026-02-28', value: 55 },
+            { time: '2026-03-01', value: 58 },
+            { time: '2026-03-02', value: 62 },
+        ]);
+        smaChart.timeScale().fitContent();
+
+        // --- 2. Fear & Greed Chart Initialization ---
+        const fgContainer = document.getElementById('fgChart');
+        const fgChart = LightweightCharts.createChart(fgContainer, chartOptions);
+        const fgSeries = fgChart.addAreaSeries({
+            topColor: 'rgba(244, 91, 105, 0.4)', // Fading salmon
+            bottomColor: 'rgba(244, 91, 105, 0.0)',
+            lineColor: '#F45B69',
+            lineWidth: 2,
+        });
+        fgSeries.setData([
+            { time: '2026-02-25', value: 65 },
+            { time: '2026-02-26', value: 55 },
+            { time: '2026-02-27', value: 45 },
+            { time: '2026-02-28', value: 40 },
+            { time: '2026-03-01', value: 38 },
+            { time: '2026-03-02', value: 34 },
+        ]);
+        fgChart.timeScale().fitContent();
+
+        // --- 3. Populate Lists (Dummy Data Function) ---
+        function populateList(elementId, data, isVolume = false) {
+            const list = document.getElementById(elementId);
+            list.innerHTML = data.map(item => `
+                <li class="flex justify-between items-center py-1 border-b border-borderSubtle last:border-0">
+                    <span class="text-textMain">${item.ticker}</span>
+                    <span class="${item.val > 0 ? 'text-bullish' : 'text-bearish'}">
+                        ${item.val > 0 ? '+' : ''}${item.val}${isVolume ? 'x' : '%'}
+                    </span>
+                </li>
+            `).join('');
+        }
+
+        populateList('gainersList', [
+            { ticker: 'BTC/USDT', val: 4.71 },
+            { ticker: 'GRASS/USDT', val: 24.71 },
+            { ticker: 'NEAR/USDT', val: 16.69 },
+            { ticker: 'JUP/USDT', val: 10.21 },
+            { ticker: 'WIF/USDT', val: 7.39 }
+        ]);
+
+        populateList('volumeList', [
+            { ticker: 'PEPE/USDT', val: 14.2 },
+            { ticker: 'WLD/USDT', val: 8.5 },
+            { ticker: 'SOL/USDT', val: 5.1 },
+            { ticker: 'ONDO/USDT', val: 4.2 },
+            { ticker: 'RENDER/USDT', val: 3.8 }
+        ], true);
+
+        // --- Utility: Update Clock ---
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('clock').innerText = now.toISOString().substring(11, 19) + ' UTC';
+        }, 1000);
+
+        // --- Handle Window Resize for Charts ---
+        window.addEventListener('resize', () => {
+            smaChart.applyOptions({ width: smaContainer.clientWidth });
+            fgChart.applyOptions({ width: fgContainer.clientWidth });
+        });
+    </script>
+</body>
+</html>
