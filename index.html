@@ -6,41 +6,33 @@
     <title>Systematic Trading Dashboard</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        bgApp: '#0B121C',
-                        bgCard: '#121A25',
-                        borderSubtle: '#1F2937',
-                        textMain: '#F3F4F6',
-                        textMuted: '#6B7280',
-                        bullish: '#25C2A0',
-                        bearish: '#F45B69'
+                        bgApp: '#0B121C', bgCard: '#121A25', borderSubtle: '#1F2937',
+                        textMain: '#F3F4F6', textMuted: '#6B7280',
+                        bullish: '#25C2A0', bearish: '#F45B69'
                     },
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                        mono: ['JetBrains Mono', 'monospace'],
-                    }
+                    fontFamily: { sans: ['Inter', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] }
                 }
             }
         }
     </script>
-
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 
     <style>
         body { background-color: #0B121C; color: #F3F4F6; }
-        /* Custom Scrollbar for a sleek look */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #0B121C; }
         ::-webkit-scrollbar-thumb { background: #1F2937; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #6B7280; }
-        
-        .chart-container { height: 300px; width: 100%; }
+        .chart-container { height: 300px; width: 100%; position: relative; }
+        .loader { border: 2px solid #1F2937; border-top: 2px solid #25C2A0; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; display: inline-block; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loading-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: #121A25; z-index: 10; }
     </style>
 </head>
 <body class="font-sans antialiased p-2 md:p-4">
@@ -48,150 +40,300 @@
     <header class="mb-4 flex justify-between items-end border-b border-borderSubtle pb-2">
         <div>
             <h1 class="text-xl font-bold tracking-wide">MARKET SCREENER</h1>
-            <p class="text-xs text-textMuted uppercase tracking-wider">Systematic Overview</p>
+            <p class="text-xs text-textMuted uppercase tracking-wider">Top 50 Liquidity Engine</p>
         </div>
-        <div class="text-right font-mono text-sm text-textMuted">
+        <div class="text-right font-mono text-sm text-textMuted flex flex-col items-end">
             <span id="clock">00:00:00 UTC</span>
+            <span id="status" class="text-xs text-bullish mt-1 flex items-center gap-2">Initializing API...</span>
         </div>
     </header>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 lg:col-span-2 shadow-lg">
+        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 lg:col-span-2 shadow-lg relative">
             <div class="flex justify-between items-center mb-2">
-                <h2 class="text-sm font-semibold text-textMuted uppercase">Binance SMA Breadth (%)</h2>
-                <span class="text-xs text-textMuted font-mono">10, 20, 50, 200</span>
+                <h2 class="text-sm font-semibold text-textMuted uppercase">Altcoin SMA Breadth (%)</h2>
+                <div class="text-xs text-textMuted font-mono flex gap-3">
+                    <span style="color: #25C2A0;">■ 10d</span>
+                    <span style="color: #3B82F6;">■ 20d</span>
+                    <span style="color: #F59E0B;">■ 50d</span>
+                    <span style="color: #F45B69;">■ 200d</span>
+                </div>
             </div>
-            <div id="smaChart" class="chart-container"></div>
+            <div id="smaChart" class="chart-container"><div class="loading-overlay" id="smaLoader"><div class="loader"></div></div></div>
         </div>
 
-        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg">
+        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg relative">
             <div class="flex justify-between items-center mb-2">
                 <h2 class="text-sm font-semibold text-textMuted uppercase">Fear & Greed Index</h2>
-                <span class="text-xs font-mono text-bearish font-bold">FEAR (34)</span>
+                <span id="fgCurrent" class="text-xs font-mono text-textMuted font-bold">LOADING</span>
             </div>
-            <div id="fgChart" class="chart-container"></div>
+            <div id="fgChart" class="chart-container"><div class="loading-overlay" id="fgLoader"><div class="loader"></div></div></div>
         </div>
 
         <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg lg:col-span-3">
-            <h2 class="text-sm font-semibold text-textMuted uppercase mb-3">New 52-Week Highs & Lows</h2>
-            <div class="flex items-center w-full bg-borderSubtle h-6 rounded-full overflow-hidden font-mono text-xs font-bold">
-                <div class="bg-bullish h-full flex items-center justify-start px-3 text-bgApp" style="width: 65%;">HIGHS: 142</div>
-                <div class="bg-bearish h-full flex items-center justify-end px-3 text-bgApp" style="width: 35%;">LOWS: 76</div>
+            <h2 class="text-sm font-semibold text-textMuted uppercase mb-3">52-Week Highs & Lows (Top 50)</h2>
+            <div class="flex items-center w-full bg-borderSubtle h-6 rounded-full overflow-hidden font-mono text-xs font-bold relative">
+                <div id="highsBar" class="bg-bullish h-full flex items-center justify-start px-3 text-bgApp transition-all duration-1000" style="width: 50%;">HIGHS: 0</div>
+                <div id="lowsBar" class="bg-bearish h-full flex items-center justify-end px-3 text-bgApp transition-all duration-1000" style="width: 50%;">LOWS: 0</div>
             </div>
         </div>
 
-        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg lg:col-span-1 xl:col-span-1">
+        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-sm font-semibold text-textMuted uppercase">Top Gainers</h2>
-                <div class="flex space-x-2 text-xs font-mono">
-                    <button class="text-textMain border-b border-bullish">1D</button>
-                    <button class="text-textMuted hover:text-textMain">1W</button>
-                </div>
+                <h2 class="text-sm font-semibold text-textMuted uppercase">Top Gainers (24H)</h2>
             </div>
             <ul class="space-y-2 font-mono text-sm" id="gainersList">
-                </ul>
+                <li class="flex justify-center py-4"><div class="loader"></div></li>
+            </ul>
         </div>
 
-        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg lg:col-span-1 xl:col-span-1">
+        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-sm font-semibold text-textMuted uppercase">Volume Anomalies</h2>
-                <div class="flex space-x-2 text-xs font-mono">
-                    <button class="text-textMain border-b border-bullish">1D</button>
-                    <button class="text-textMuted hover:text-textMain">1W</button>
-                </div>
+                <h2 class="text-sm font-semibold text-textMuted uppercase">Top Volume (24H)</h2>
             </div>
             <ul class="space-y-2 font-mono text-sm" id="volumeList">
-                </ul>
+                <li class="flex justify-center py-4"><div class="loader"></div></li>
+            </ul>
         </div>
         
+        <div class="bg-bgCard border border-borderSubtle rounded-lg p-4 shadow-lg">
+            <h2 class="text-sm font-semibold text-textMuted uppercase mb-4">Engine Logs</h2>
+            <div id="logs" class="font-mono text-xs text-textMuted space-y-1 h-48 overflow-y-auto"></div>
+        </div>
     </div>
 
     <script>
-        // --- Shared Chart Options ---
+        const STABLECOINS = ['USDT', 'USDC', 'FDUSD', 'TUSD', 'BUSD', 'DAI', 'EUR', 'TRY'];
+        const EXCLUDE_ENDS = ['UP', 'DOWN', 'BEAR', 'BULL'];
+
+        // --- UI Setup & Charts ---
         const chartOptions = {
             layout: { background: { type: 'solid', color: 'transparent' }, textColor: '#6B7280' },
             grid: { vertLines: { color: '#1F2937' }, horzLines: { color: '#1F2937' } },
-            timeScale: { borderColor: '#1F2937', timeVisible: true },
+            timeScale: { borderColor: '#1F2937', timeVisible: false },
             rightPriceScale: { borderColor: '#1F2937' },
         };
 
-        // --- 1. SMA Breadth Chart Initialization ---
-        const smaContainer = document.getElementById('smaChart');
-        const smaChart = LightweightCharts.createChart(smaContainer, chartOptions);
-        
-        // Example: 200 SMA line
-        const sma200Series = smaChart.addLineSeries({ color: '#25C2A0', lineWidth: 2 });
-        // Example data structure you will feed it
-        sma200Series.setData([
-            { time: '2026-02-25', value: 45 },
-            { time: '2026-02-26', value: 48 },
-            { time: '2026-02-27', value: 52 },
-            { time: '2026-02-28', value: 55 },
-            { time: '2026-03-01', value: 58 },
-            { time: '2026-03-02', value: 62 },
-        ]);
-        smaChart.timeScale().fitContent();
+        const smaChart = LightweightCharts.createChart(document.getElementById('smaChart'), chartOptions);
+        const sma10Series = smaChart.addLineSeries({ color: '#25C2A0', lineWidth: 2 });
+        const sma20Series = smaChart.addLineSeries({ color: '#3B82F6', lineWidth: 2 });
+        const sma50Series = smaChart.addLineSeries({ color: '#F59E0B', lineWidth: 2 });
+        const sma200Series = smaChart.addLineSeries({ color: '#F45B69', lineWidth: 2 });
 
-        // --- 2. Fear & Greed Chart Initialization ---
-        const fgContainer = document.getElementById('fgChart');
-        const fgChart = LightweightCharts.createChart(fgContainer, chartOptions);
+        const fgChart = LightweightCharts.createChart(document.getElementById('fgChart'), chartOptions);
         const fgSeries = fgChart.addAreaSeries({
-            topColor: 'rgba(244, 91, 105, 0.4)', // Fading salmon
-            bottomColor: 'rgba(244, 91, 105, 0.0)',
-            lineColor: '#F45B69',
-            lineWidth: 2,
+            topColor: 'rgba(244, 91, 105, 0.4)', bottomColor: 'rgba(244, 91, 105, 0.0)',
+            lineColor: '#F45B69', lineWidth: 2,
         });
-        fgSeries.setData([
-            { time: '2026-02-25', value: 65 },
-            { time: '2026-02-26', value: 55 },
-            { time: '2026-02-27', value: 45 },
-            { time: '2026-02-28', value: 40 },
-            { time: '2026-03-01', value: 38 },
-            { time: '2026-03-02', value: 34 },
-        ]);
-        fgChart.timeScale().fitContent();
 
-        // --- 3. Populate Lists (Dummy Data Function) ---
+        // Resize handlers
+        new ResizeObserver(() => {
+            smaChart.applyOptions({ width: document.getElementById('smaChart').clientWidth });
+            fgChart.applyOptions({ width: document.getElementById('fgChart').clientWidth });
+        }).observe(document.body);
+
+        function log(msg) {
+            const el = document.getElementById('logs');
+            el.innerHTML = `<div>> ${msg}</div>` + el.innerHTML;
+        }
+
+        // --- Helper functions ---
+        function formatVal(val, isVol = false) {
+            if (isVol) return '$' + (val / 1e6).toFixed(1) + 'M';
+            return (val > 0 ? '+' : '') + val.toFixed(2) + '%';
+        }
+
         function populateList(elementId, data, isVolume = false) {
-            const list = document.getElementById(elementId);
-            list.innerHTML = data.map(item => `
+            document.getElementById(elementId).innerHTML = data.map(item => `
                 <li class="flex justify-between items-center py-1 border-b border-borderSubtle last:border-0">
-                    <span class="text-textMain">${item.ticker}</span>
-                    <span class="${item.val > 0 ? 'text-bullish' : 'text-bearish'}">
-                        ${item.val > 0 ? '+' : ''}${item.val}${isVolume ? 'x' : '%'}
+                    <span class="text-textMain">${item.symbol.replace('USDT','')}</span>
+                    <span class="${isVolume ? 'text-textMain' : (item.val > 0 ? 'text-bullish' : 'text-bearish')}">
+                        ${formatVal(item.val, isVolume)}
                     </span>
                 </li>
             `).join('');
         }
 
-        populateList('gainersList', [
-            { ticker: 'BTC/USDT', val: 4.71 },
-            { ticker: 'GRASS/USDT', val: 24.71 },
-            { ticker: 'NEAR/USDT', val: 16.69 },
-            { ticker: 'JUP/USDT', val: 10.21 },
-            { ticker: 'WIF/USDT', val: 7.39 }
-        ]);
+        // Math: Calculate simple moving average
+        function calculateSMA(data, period) {
+            let sma = [];
+            for (let i = 0; i < data.length; i++) {
+                if (i < period - 1) {
+                    sma.push(null);
+                    continue;
+                }
+                let sum = 0;
+                for (let j = 0; j < period; j++) sum += data[i - j].close;
+                sma.push(sum / period);
+            }
+            return sma;
+        }
 
-        populateList('volumeList', [
-            { ticker: 'PEPE/USDT', val: 14.2 },
-            { ticker: 'WLD/USDT', val: 8.5 },
-            { ticker: 'SOL/USDT', val: 5.1 },
-            { ticker: 'ONDO/USDT', val: 4.2 },
-            { ticker: 'RENDER/USDT', val: 3.8 }
-        ], true);
+        // --- Core Execution ---
+        async function runEngine() {
+            try {
+                // 1. Fetch Fear & Greed
+                log('Fetching Alt.me Fear & Greed...');
+                const fgRes = await fetch('https://api.alternative.me/fng/?limit=60&format=json');
+                const fgData = await fgRes.json();
+                
+                const fgFormatted = fgData.data.map(d => ({
+                    time: new Date(d.timestamp * 1000).toISOString().split('T')[0],
+                    value: parseInt(d.value)
+                })).reverse();
+                
+                fgSeries.setData(fgFormatted);
+                const currentFg = fgFormatted[fgFormatted.length-1].value;
+                const fgLabel = document.getElementById('fgCurrent');
+                fgLabel.innerText = `${fgData.data[0].value_classification.toUpperCase()} (${currentFg})`;
+                fgLabel.className = `text-xs font-mono font-bold ${currentFg > 50 ? 'text-bullish' : 'text-bearish'}`;
+                document.getElementById('fgLoader').style.display = 'none';
 
-        // --- Utility: Update Clock ---
+                // 2. Fetch Binance 24H Tickers to get Market Overview
+                log('Fetching Binance 24H tickers...');
+                const tRes = await fetch('https://api.binance.com/api/v3/ticker/24hr');
+                const allTickers = await tRes.json();
+
+                // Filter for purely USDT pairs, no stablecoins or leverged tokens
+                const validTickers = allTickers.filter(t => {
+                    if (!t.symbol.endsWith('USDT')) return false;
+                    const base = t.symbol.replace('USDT', '');
+                    if (STABLECOINS.includes(base)) return false;
+                    if (EXCLUDE_ENDS.some(ext => base.endsWith(ext))) return false;
+                    return true;
+                });
+
+                // Sort by Volume to find Top 50 most liquid altcoins
+                validTickers.sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume));
+                const top50 = validTickers.slice(0, 50);
+                
+                // Populate Gainers & Volume Lists
+                const gainers = [...validTickers].sort((a, b) => parseFloat(b.priceChangePercent) - parseFloat(a.priceChangePercent)).slice(0, 10);
+                populateList('gainersList', gainers.map(g => ({ symbol: g.symbol, val: parseFloat(g.priceChangePercent) })));
+                
+                populateList('volumeList', top50.slice(0, 10).map(v => ({ symbol: v.symbol, val: parseFloat(v.quoteVolume) })), true);
+
+                // 3. Process Klines for Breadth and 52W Highs/Lows
+                log('Calculating Breadth & 52W data for Top 50...');
+                let breadthData = {}; // structure: { '2023-10-01': { total: 50, above10: 20, above20: ... } }
+                let newHighsCount = 0;
+                let newLowsCount = 0;
+
+                // Process in chunks to avoid overwhelming the browser network queue
+                const chunkSize = 10;
+                for (let i = 0; i < top50.length; i += chunkSize) {
+                    const chunk = top50.slice(i, i + chunkSize);
+                    
+                    await Promise.all(chunk.map(async (coin) => {
+                        try {
+                            // Fetch 200 daily klines for SMA
+                            const klineRes = await fetch(`https://api.binance.com/api/v3/klines?symbol=${coin.symbol}&interval=1d&limit=200`);
+                            const klines = await klineRes.json();
+                            
+                            const parsedKlines = klines.map(k => ({
+                                time: new Date(k[0]).toISOString().split('T')[0],
+                                close: parseFloat(k[4]),
+                                high: parseFloat(k[2]),
+                                low: parseFloat(k[3])
+                            }));
+
+                            const sma10 = calculateSMA(parsedKlines, 10);
+                            const sma20 = calculateSMA(parsedKlines, 20);
+                            const sma50 = calculateSMA(parsedKlines, 50);
+                            const sma200 = calculateSMA(parsedKlines, 200);
+
+                            // Aggregate Breadth for the last 30 days
+                            const lookback = 30;
+                            for (let j = parsedKlines.length - lookback; j < parsedKlines.length; j++) {
+                                if (j < 0) continue;
+                                const day = parsedKlines[j].time;
+                                const close = parsedKlines[j].close;
+                                
+                                if (!breadthData[day]) breadthData[day] = { total: 0, a10: 0, a20: 0, a50: 0, a200: 0 };
+                                
+                                breadthData[day].total++;
+                                if (sma10[j] && close > sma10[j]) breadthData[day].a10++;
+                                if (sma20[j] && close > sma20[j]) breadthData[day].a20++;
+                                if (sma50[j] && close > sma50[j]) breadthData[day].a50++;
+                                if (sma200[j] && close > sma200[j]) breadthData[day].a200++;
+                            }
+
+                            // Calculate 52-Week Highs/Lows approximation
+                            // Using the 200 daily candles (roughly 6.5 months) as a fast proxy to avoid extra API hits. 
+                            // If you need exact 365 days, change the limit above to 365.
+                            let maxHigh = 0;
+                            let minLow = Infinity;
+                            parsedKlines.forEach(k => {
+                                if (k.high > maxHigh) maxHigh = k.high;
+                                if (k.low < minLow) minLow = k.low;
+                            });
+
+                            const currentClose = parsedKlines[parsedKlines.length - 1].close;
+                            // Tolerance of 2% from the high/low to count as a "New High/Low"
+                            if (currentClose >= maxHigh * 0.98) newHighsCount++;
+                            if (currentClose <= minLow * 1.02) newLowsCount++;
+
+                        } catch (err) {
+                            console.error(`Failed to process ${coin.symbol}`, err);
+                        }
+                    }));
+                }
+
+                // 4. Plot Breadth Chart
+                const dates = Object.keys(breadthData).sort();
+                const b10 = [], b20 = [], b50 = [], b200 = [];
+                
+                dates.forEach(date => {
+                    const d = breadthData[date];
+                    b10.push({ time: date, value: (d.a10 / d.total) * 100 });
+                    b20.push({ time: date, value: (d.a20 / d.total) * 100 });
+                    b50.push({ time: date, value: (d.a50 / d.total) * 100 });
+                    b200.push({ time: date, value: (d.a200 / d.total) * 100 });
+                });
+
+                sma10Series.setData(b10);
+                sma20Series.setData(b20);
+                sma50Series.setData(b50);
+                sma200Series.setData(b200);
+                smaChart.timeScale().fitContent();
+                document.getElementById('smaLoader').style.display = 'none';
+
+                // 5. Update 52W UI
+                const totalExtremes = newHighsCount + newLowsCount;
+                let highPct = 50, lowPct = 50;
+                
+                if (totalExtremes > 0) {
+                    highPct = (newHighsCount / totalExtremes) * 100;
+                    lowPct = (newLowsCount / totalExtremes) * 100;
+                }
+                
+                // Minimum width so text is visible
+                if (highPct < 15) { highPct = 15; lowPct = 85; }
+                if (lowPct < 15) { lowPct = 15; highPct = 85; }
+
+                document.getElementById('highsBar').style.width = `${highPct}%`;
+                document.getElementById('highsBar').innerText = `HIGHS: ${newHighsCount}`;
+                document.getElementById('lowsBar').style.width = `${lowPct}%`;
+                document.getElementById('lowsBar').innerText = `LOWS: ${newLowsCount}`;
+
+                document.getElementById('status').innerText = 'Data Sync Complete';
+                log('All systems operational.');
+
+            } catch (error) {
+                log(`ERROR: ${error.message}`);
+                document.getElementById('status').innerText = 'Sync Failed. Retrying...';
+                document.getElementById('status').className = 'text-xs text-bearish mt-1';
+            }
+        }
+
+        // Clock 
         setInterval(() => {
-            const now = new Date();
-            document.getElementById('clock').innerText = now.toISOString().substring(11, 19) + ' UTC';
+            document.getElementById('clock').innerText = new Date().toISOString().substring(11, 19) + ' UTC';
         }, 1000);
 
-        // --- Handle Window Resize for Charts ---
-        window.addEventListener('resize', () => {
-            smaChart.applyOptions({ width: smaContainer.clientWidth });
-            fgChart.applyOptions({ width: fgContainer.clientWidth });
-        });
+        // Start
+        runEngine();
+
     </script>
 </body>
 </html>
